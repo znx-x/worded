@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worded | Text Editor</title>
+    
+    <script src="tailwind.js"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link href="quill.snow.css" rel="stylesheet">
+    <script src="quill.min.js"></script>
+    
+    <script src="marked.min.js"></script>
+    <script src="turndown.js"></script>
+    
+    <script src="html2pdf.bundle.min.js"></script>
+
+    <style>
+        @import url('fonts.css');
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f3f4f6;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Ribbon */
+        .ribbon-container {
+            background-color: white;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 0.5rem 1rem;
+            z-index: 10;
+        }
+
+        .doc-title {
+            font-size: 1.125rem;
+            color: #1f2937;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid transparent;
+        }
+        .doc-title:hover, .doc-title:focus {
+            border-color: #3b82f6;
+            outline: none;
+        }
+
+        .menu-bar button {
+            font-size: 0.875rem;
+            color: #374151;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            transition: background 0.1s;
+        }
+        .menu-bar button:hover { background-color: #f3f4f6; }
+
+        /* Editor Area */
+        #editor-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        #editor-page {
+            background: white;
+            width: 210mm; 
+            min-height: 297mm; 
+            padding: 20mm; /* Slightly reduced padding to allow more content */
+            
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e5e7eb;
+            box-sizing: border-box; 
+        }
+
+        /* --- PDF EXPORT OVERRIDES --- */
+        .pdf-clean-mode {
+            box-shadow: none !important;
+            border: none !important;
+            margin: 0 !important;
+        }
+
+        /* --- EDITOR TYPOGRAPHY --- */
+        .ql-container.ql-snow {
+            border: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            font-size: 16px; 
+            color: #24292f;
+        }
+
+        /* CRITICAL: PAGE BREAK LOGIC */
+        /* This forces the printer/PDF generator to keep these elements whole */
+        .ql-editor p, 
+        .ql-editor h1, 
+        .ql-editor h2, 
+        .ql-editor h3, 
+        .ql-editor blockquote, 
+        .ql-editor .ql-code-block-container,
+        .ql-editor li { 
+            page-break-inside: avoid; 
+            break-inside: avoid;
+        }
+
+        .ql-editor p { margin-bottom: 16px; line-height: 1.6; }
+
+        .ql-editor h1 {
+            margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25;
+            padding-bottom: 0.3em; border-bottom: 1px solid #d0d7de;
+        }
+
+        .ql-editor h2 {
+            margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25;
+            padding-bottom: 0.3em; border-bottom: 1px solid #d0d7de;
+        }
+        
+        .ql-editor h3 { margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; }
+
+        .ql-editor ul, .ql-editor ol { padding-left: 2em; margin-bottom: 16px; }
+        .ql-editor li { line-height: 1.6; margin-bottom: 0.25em; }
+        
+        .ql-editor blockquote {
+            border-left: 4px solid #d0d7de; color: #57606a; padding-left: 1em;
+            margin-left: 0; margin-bottom: 16px; font-style: italic;
+        }
+
+        .ql-editor .ql-code-block-container {
+            background-color: #f6f8fa; border-radius: 6px; margin-bottom: 16px; padding: 16px;
+            font-family: ui-monospace, SFMono-Regular, monospace; font-size: 85%; line-height: 1.45;
+        }
+
+        .ql-editor img { max-width: 100%; margin: 8px 0; page-break-inside: avoid; }
+
+        /* Toolbar Styling */
+        .ql-toolbar.ql-snow {
+            border: none; border-bottom: 1px solid #e5e7eb; background: #edf2f7;
+            border-radius: 8px; margin-top: 0.5rem; padding: 8px;
+        }
+        
+        /* Print Styles (Browser Print) */
+        @media print {
+            @page {
+                size: A4;
+                margin: 20mm; /* Standard print margin */
+            }
+            body * { visibility: hidden; }
+            #editor-page, #editor-page * { visibility: visible; }
+            #editor-page {
+                position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0;
+                box-shadow: none; border: none;
+                background: white;
+            }
+            .ribbon-container { display: none; }
+            #editor-container { padding: 0; display: block; }
+            /* Hide empty paragraphs if any */
+            p:empty { display: none; }
+        }
+
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="ribbon-container shadow-sm">
+        <div class="flex items-center gap-4 mb-2">
+            <div class="text-blue-600 text-2xl"><i class="fa-solid fa-file-lines"></i></div>
+            <div>
+                <input type="text" id="docTitle" value="Untitled Document" class="doc-title font-medium w-64 block">
+                <div class="menu-bar flex gap-1 mt-1">
+                    <button onclick="triggerOpen()">Open</button>
+                    <button onclick="saveFile(false)">Save</button>
+                    <button onclick="window.print()">Print</button>
+                    <button onclick="exportSnapshot()">Export PDF</button>
+                    <button onclick="clearDoc()" class="text-red-600 hover:bg-red-50">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="toolbar-container">
+            <span class="ql-formats">
+                <select class="ql-header">
+                    <option value="1">Heading 1</option>
+                    <option value="2">Heading 2</option>
+                    <option value="3">Heading 3</option>
+                    <option selected>Normal</option>
+                </select>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-bold"></button>
+                <button class="ql-italic"></button>
+                <button class="ql-underline"></button>
+                <button class="ql-strike"></button>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-list" value="ordered"></button>
+                <button class="ql-list" value="bullet"></button>
+                <button class="ql-indent" value="-1"></button>
+                <button class="ql-indent" value="+1"></button>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-link"></button>
+                <button class="ql-image"></button>
+                <button class="ql-blockquote"></button>
+                <button class="ql-code-block"></button>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-clean" title="Clear Formatting"></button>
+            </span>
+        </div>
+    </div>
+
+    <div id="editor-container">
+        <div id="editor-page">
+            <div id="editor"></div>
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" class="hidden" accept=".md,.txt,.markdown">
+
+    <script>
+        const turndownService = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+
+        var quill = new Quill('#editor', {
+            modules: { toolbar: '#toolbar-container' },
+            theme: 'snow',
+            placeholder: 'Start typing your document here...'
+        });
+
+        // Set default title for print dialog
+        const titleInput = document.getElementById('docTitle');
+        titleInput.addEventListener('input', () => { document.title = titleInput.value; });
+
+        function triggerOpen() { document.getElementById('fileInput').click(); }
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const html = marked.parse(e.target.result);
+                quill.clipboard.dangerouslyPasteHTML(html);
+                titleInput.value = file.name.replace(/\.[^/.]+$/, "");
+                document.title = titleInput.value; // Update window title for PDF export name
+            };
+            reader.readAsText(file);
+        });
+
+        async function saveFile(saveAs) {
+            const editorContent = document.querySelector('.ql-editor').innerHTML;
+            const markdown = turndownService.turndown(editorContent);
+            const title = titleInput.value || 'document';
+            const filename = title.endsWith('.md') ? title : `${title}.md`;
+
+            if (window.showSaveFilePicker && !saveAs && window.currentFileHandle) {
+                 // Placeholder
+            } else {
+                const blob = new Blob([markdown], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(url);
+            }
+        }
+
+        // Renamed to clarify functionality
+        function exportSnapshot() {
+            const element = document.getElementById('editor-page');
+            const title = titleInput.value;
+            
+            element.classList.add('pdf-clean-mode');
+
+            const opt = {
+                margin:       0, 
+                filename:     `${title}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                // NEW: Pagebreak configuration to prevent slicing
+                pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }, 
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).save().then(function() {
+                element.classList.remove('pdf-clean-mode');
+            }, function() {
+                element.classList.remove('pdf-clean-mode');
+            });
+        }
+
+        function clearDoc() {
+            if(confirm("Are you sure? Unsaved changes will be lost.")) {
+                quill.setText('');
+                titleInput.value = "Untitled Document";
+                document.getElementById('fileInput').value = "";
+            }
+        }
+        
+        window.onbeforeunload = function() {
+            if (quill.getLength() > 1) return "You have unsaved changes.";
+        };
+    </script>
+</body>
+</html>
